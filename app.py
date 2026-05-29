@@ -194,8 +194,8 @@ elif menu == "📶 เชื่อมต่อ Wi-Fi":
     st.write("กรอกข้อมูลเครือข่าย Wi-Fi เพื่อสร้าง QR Code เมื่อผู้ใช้งานสแกนจะสามารถกดเชื่อมต่ออินเทอร์เน็ตได้ทันที")
     
     # สร้างกล่องรับข้อมูล Wi-Fi
-    wifi_ssid = st.text_input("1. ชื่อสัญญาณ Wi-Fi (SSID):", placeholder="UTTH-Employee")
-    wifi_password = st.text_input("2. รหัสผ่าน Wi-Fi (Password):", type="password", placeholder="5Xat3ctQ!w?n")
+    wifi_ssid = st.text_input("1. ชื่อสัญญาณ Wi-Fi (SSID):", placeholder="กรอกชื่อ Wi-Fi ให้ถูกต้องตามที่ตั้งไว้")
+    wifi_password = st.text_input("2. รหัสผ่าน Wi-Fi (Password):", type="password", placeholder="กรอกรหัสผ่าน Wi-Fi")
     
     wifi_security = st.selectbox(
         "3. ประเภทความปลอดภัย (Security Type):",
