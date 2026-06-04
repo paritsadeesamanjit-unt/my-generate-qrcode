@@ -9,7 +9,6 @@ st.set_page_config(page_title="Universal QR Code Generator", page_icon="⚙️",
 
 # --- ฟังก์ชันหลัก: สร้าง QR Code และวาดข้อความลงไปในเนื้อภาพ ---
 def generate_qr_with_text(data, label_text):
-    # 1. สร้าง QR Code
     qr = qrcode.QRCode(
         version=1,
         error_correction=qrcode.constants.ERROR_CORRECT_L,
@@ -20,7 +19,6 @@ def generate_qr_with_text(data, label_text):
     qr.make(fit=True)
     qr_img = qr.make_image(fill_color="black", back_color="white").convert("RGB")
     
-    # จำกัดความยาวข้อความใต้ภาพไม่ให้ยาวเกินไปจนหลุดกรอบ
     if len(label_text) > 28:
         clean_label = label_text[:25] + "..."
     else:
@@ -30,13 +28,11 @@ def generate_qr_with_text(data, label_text):
     padding = 20
     text_space = 50 
     
-    # 2. สร้างผืนผ้าใบสีขาว
     canvas_w = qr_w + (padding * 2)
     canvas_h = qr_h + text_space + padding
     canvas = Image.new("RGB", (canvas_w, canvas_h), "white")
     canvas.paste(qr_img, (padding, padding))
     
-    # 3. เขียนข้อความลงบนภาพ
     draw = ImageDraw.Draw(canvas)
     font = None
     system_fonts = ["tahoma.ttf", "arial.ttf", "cordia.ttf"]
@@ -71,7 +67,7 @@ menu = st.sidebar.radio(
 )
 
 st.sidebar.markdown("---")
-st.sidebar.info("💡 ระบบจะฝังชื่อหรือข้อความลงใต้กรอบรูปภาพ QR Code ให้ทุกเมนู เพื่อความสะดวกในการนำไปพิมพ์ใช้งานครับ")
+st.sidebar.info("⚙️ ระบบได้รับการอัปเดตเซิร์ฟเวอร์เก็บไฟล์ใหม่ให้เสถียรขึ้นแล้วครับ")
 
 
 # =========================================================================
@@ -87,22 +83,25 @@ if menu == "📄 เอกสาร SDS (PDF)":
         uploaded_file = st.file_uploader("เลือกไฟล์ PDF ของคุณ", type=["pdf"], key="sds_upload")
         if st.button("สร้าง QR Code (จากไฟล์อัปโหลด)", key="btn_sds_upload"):
             if uploaded_file is not None:
-                with st.spinner("กำลังประมวลผลไฟล์..."):
+                with st.spinner("กำลังอัปโหลดไฟล์ไปยังระบบสำรองที่เสถียรขึ้น..."):
                     try:
-                        files = {"file": (uploaded_file.name, uploaded_file.getvalue(), "application/pdf")}
-                        response = requests.post("https://tmpfiles.org/api/v1/upload", files=files)
+                        # เปลี่ยนมาใช้ transfer.sh ซึ่งส่งลิงก์ตรงกลับมาทันทีและเสถียรกว่าเยอะครับ
+                        url = f"https://transfer.sh/{uploaded_file.name}"
+                        response = requests.put(url, data=uploaded_file.getvalue())
+                        
                         if response.status_code == 200:
-                            original_link = response.json().get("data", {}).get("url")
-                            direct_link = original_link.replace("https://tmpfiles.org/", "https://tmpfiles.org/dl/")
+                            direct_link = response.text.strip() # ดึง URL ตรงๆ ที่ระบบส่งกลับมา
                             
                             filename_clean = uploaded_file.name[:-4] if uploaded_file.name.lower().endswith('.pdf') else uploaded_file.name
                             
                             qr_bytes, name = generate_qr_with_text(direct_link, filename_clean)
                             st.success("🎉 สร้างสำเร็จ!")
                             st.image(qr_bytes, width=300)
+                            st.markdown(f"🔗 **ลิงก์ตรงไฟล์:** [{direct_link}]({direct_link})")
                             st.download_button("📥 ดาวน์โหลดภาพ QR Code (PNG)", data=qr_bytes, file_name=f"{name}_qr.png", mime="image/png")
-                        else: st.error("เซิร์ฟเวอร์ปลายทางขัดข้อง กรุณาลองใหม่")
-                    except Exception as e: st.error(f"เกิดข้อผิดพลาด: {e}")
+                        else:
+                            st.error(f"เซิร์ฟเวอร์ปฏิเสธการเก็บไฟล์ (Status Code: {response.status_code})")
+                    except Exception as e: st.error(f"เกิดข้อผิดพลาดในการเชื่อมต่อ: {e}")
             else: st.error("กรุณาเลือกไฟล์ก่อนครับ")
             
     with tab2:
@@ -168,32 +167,31 @@ elif menu == "🌐 ลิงก์เว็บ & รูปภาพ":
         uploaded_img = st.file_uploader("เลือกไฟล์รูปภาพของคุณ", type=["png", "jpg", "jpeg"])
         if st.button("อัปโหลดและสร้าง QR Code รูปภาพ", key="btn_img_upload"):
             if uploaded_img is not None:
-                with st.spinner("กำลังอัปโหลดรูปภาพไปยังเซิร์ฟเวอร์..."):
+                with st.spinner("กำลังอัปโหลดรูปภาพไปยังระบบใหม่..."):
                     try:
-                        files = {"file": (uploaded_img.name, uploaded_img.getvalue(), uploaded_img.type)}
-                        response = requests.post("https://tmpfiles.org/api/v1/upload", files=files)
+                        url = f"https://transfer.sh/{uploaded_img.name}"
+                        response = requests.put(url, data=uploaded_img.getvalue())
+                        
                         if response.status_code == 200:
-                            original_link = response.json().get("data", {}).get("url")
-                            direct_img_link = original_link.replace("https://tmpfiles.org/", "https://tmpfiles.org/dl/")
+                            direct_img_link = response.text.strip()
                             img_name_clean = uploaded_img.name.rsplit('.', 1)[0]
                             
                             qr_bytes, name = generate_qr_with_text(direct_img_link, img_name_clean)
-                            st.success("📤 อัปโหลดรูปภาพและสร้าง QR Code สำเร็จ!")
+                            st.success("📤 อัปโหลดรูปภาพสำเร็จ!")
                             st.image(qr_bytes, width=300)
                             st.download_button("📥 ดาวน์โหลดภาพ QR Code (PNG)", data=qr_bytes, file_name=f"{name}_qr.png", mime="image/png")
-                        else: st.error("เกิดข้อผิดพลาดจากเซิร์ฟเวอร์ฝากรูป")
+                        else: st.error("เกิดข้อผิดพลาดในการฝากไฟล์รูปภาพ")
                     except Exception as e: st.error(f"เกิดข้อผิดพลาด: {e}")
             else: st.error("กรุณาเลือกไฟล์รูปภาพก่อนครับ")
 
 
 # =========================================================================
-# ✨ MENU 4: เชื่อมต่อ Wi-Fi (เมนูที่เพิ่มใหม่) ✨
+# MENU 4: เชื่อมต่อ Wi-Fi
 # =========================================================================
 elif menu == "📶 เชื่อมต่อ Wi-Fi":
     st.title("📶 ระบบสร้าง QR Code สำหรับเชื่อมต่อ Wi-Fi")
     st.write("กรอกข้อมูลเครือข่าย Wi-Fi เพื่อสร้าง QR Code เมื่อผู้ใช้งานสแกนจะสามารถกดเชื่อมต่ออินเทอร์เน็ตได้ทันที")
     
-    # สร้างกล่องรับข้อมูล Wi-Fi
     wifi_ssid = st.text_input("1. ชื่อสัญญาณ Wi-Fi (SSID):", placeholder="กรอกชื่อ Wi-Fi ให้ถูกต้องตามที่ตั้งไว้")
     wifi_password = st.text_input("2. รหัสผ่าน Wi-Fi (Password):", type="password", placeholder="กรอกรหัสผ่าน Wi-Fi")
     
@@ -201,39 +199,22 @@ elif menu == "📶 เชื่อมต่อ Wi-Fi":
         "3. ประเภทความปลอดภัย (Security Type):",
         ["WPA/WPA2", "WEP", "ไม่มีรหัสผ่าน (เปิดสาธารณะ)"]
     )
-    
-    # ตัวเลือกเพิ่มเติมเผื่อเป็นไวไฟซ่อนชื่อไว้
     is_hidden = st.checkbox("เป็นเครือข่ายที่ซ่อนชื่อไว้ (Hidden Network)")
 
     if st.button("สร้าง QR Code สำหรับ Wi-Fi", key="btn_wifi"):
         if wifi_ssid:
             with st.spinner("กำลังแปลงข้อมูล Wi-Fi เป็น QR Code..."):
-                # แปลงค่าความปลอดภัยให้ตรงตามมาตรฐาน QR Code
                 sec_type = "WPA"
-                if wifi_security == "WEP":
-                    sec_type = "WEP"
-                elif wifi_security == "ไม่มีรหัสผ่าน (เปิดสาธารณะ)":
-                    sec_type = "nopass"
+                if wifi_security == "WEP": sec_type = "WEP"
+                elif wifi_security == "ไม่มีรหัสผ่าน (เปิดสาธารณะ)": sec_type = "nopass"
                 
                 hidden_status = "true" if is_hidden else "false"
-                
-                # ประกอบร่างข้อความตามรูปแบบมาตรฐาน -> WIFI:S:ชื่อ;T:ประเภท;P:รหัสผ่าน;H:ซ่อนไหม;;
                 wifi_data_string = f"WIFI:S:{wifi_ssid};T:{sec_type};P:{wifi_password};H:{hidden_status};;"
                 
-                # กำหนดข้อความป้ายใต้รูปภาพ QR Code เพื่อให้รู้ว่าเป็นของ Wi-Fi ชื่ออะไร
                 label_under_qr = f"Connect to Wi-Fi: {wifi_ssid}"
-                
-                # สร้างรูปภาพพร้อมข้อความใต้ภาพ
                 qr_bytes, name = generate_qr_with_text(wifi_data_string, label_under_qr)
                 
                 st.success(f"🎉 สร้าง QR Code สำหรับ Wi-Fi '{wifi_ssid}' สำเร็จ!")
                 st.image(qr_bytes, width=300)
-                
-                st.download_button(
-                    label="📥 ดาวน์โหลดภาพ QR Code Wi-Fi (PNG)",
-                    data=qr_bytes,
-                    file_name=f"wifi_{wifi_ssid}_qr.png",
-                    mime="image/png"
-                )
-        else:
-            st.error("กรุณากรอก 'ชื่อสัญญาณ Wi-Fi' ก่อนกดปุ่มสร้างครับ")
+                st.download_button("📥 ดาวน์โหลดภาพ QR Code Wi-Fi (PNG)", data=qr_bytes, file_name=f"wifi_{wifi_ssid}_qr.png", mime="image/png")
+        else: st.error("กรุณากรอก 'ชื่อสัญญาณ Wi-Fi' ก่อนกดปุ่มสร้างครับ")
