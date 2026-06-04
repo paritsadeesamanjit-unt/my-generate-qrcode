@@ -2,3 +2,5 @@ streamlit
 qrcode
 pillow
 requests
+pandas
+openpyxl
