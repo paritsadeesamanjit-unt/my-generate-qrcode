@@ -7,7 +7,40 @@ from PIL import Image, ImageDraw, ImageFont
 # ตั้งค่าหน้าตาของโปรแกรม
 st.set_page_config(page_title="Universal QR Code Generator", page_icon="⚙️", layout="centered")
 
-# --- ฟังก์ชันหลัก: สร้าง QR Code และวาดข้อความลงไปในเนื้อภาพ ---
+# ✨ ฟังก์ชันใหม่: ระบบอัปโหลดสำรอง (ถ้า Server 1 ล่ม ให้ไป Server 2 ทันที)
+def upload_file_with_fallback(file_name, file_bytes, mime_type):
+    # --- ตัวเลือกที่ 1: ใช้ file.io (เป็นมิตรกับ Streamlit Cloud มากกว่า) ---
+    try:
+        files = {"file": (file_name, file_bytes, mime_type)}
+        response = requests.post("https://file.io/?expires=1d", files=files, timeout=7)
+        if response.status_code == 200 and response.json().get("success"):
+            return response.json().get("link")
+    except:
+        pass # ถ้าพัง ให้ข้ามไปลองตัวถัดไป
+        
+    # --- ตัวเลือกที่ 2: ใช้ tmpfiles.org ---
+    try:
+        files = {"file": (file_name, file_bytes, mime_type)}
+        response = requests.post("https://tmpfiles.org/api/v1/upload", files=files, timeout=7)
+        if response.status_code == 200 and response.json().get("status") == "success":
+            original_link = response.json().get("data", {}).get("url")
+            return original_link.replace("https://tmpfiles.org/", "https://tmpfiles.org/dl/")
+    except:
+        pass
+        
+    # --- ตัวเลือกที่ 3: ใช้ transfer.sh ---
+    try:
+        url = f"https://transfer.sh/{file_name}"
+        response = requests.put(url, data=file_bytes, timeout=7)
+        if response.status_code == 200:
+            return response.text.strip()
+    except:
+        pass
+        
+    return None # ถ้าพังหมดทุกที่จริงๆ จะคืนค่า None
+
+
+# --- ฟังก์ชันสร้าง QR Code และวาดข้อความลงไปในเนื้อภาพ ---
 def generate_qr_with_text(data, label_text):
     qr = qrcode.QRCode(
         version=1,
@@ -67,7 +100,7 @@ menu = st.sidebar.radio(
 )
 
 st.sidebar.markdown("---")
-st.sidebar.info("⚙️ ระบบได้รับการอัปเดตเซิร์ฟเวอร์เก็บไฟล์ใหม่ให้เสถียรขึ้นแล้วครับ")
+st.sidebar.info("⚙️ ระบบเปิดใช้งานโหมดดาวน์โหลดสำรองอัตโนมัติเรียบร้อยแล้วครับ")
 
 
 # =========================================================================
@@ -83,25 +116,22 @@ if menu == "📄 เอกสาร SDS (PDF)":
         uploaded_file = st.file_uploader("เลือกไฟล์ PDF ของคุณ", type=["pdf"], key="sds_upload")
         if st.button("สร้าง QR Code (จากไฟล์อัปโหลด)", key="btn_sds_upload"):
             if uploaded_file is not None:
-                with st.spinner("กำลังอัปโหลดไฟล์ไปยังระบบสำรองที่เสถียรขึ้น..."):
-                    try:
-                        # เปลี่ยนมาใช้ transfer.sh ซึ่งส่งลิงก์ตรงกลับมาทันทีและเสถียรกว่าเยอะครับ
-                        url = f"https://transfer.sh/{uploaded_file.name}"
-                        response = requests.put(url, data=uploaded_file.getvalue())
+                with st.spinner("กำลังอัปโหลดและประมวลผลไฟล์ผ่านระบบเครือข่ายสำรอง..."):
+                    
+                    # เรียกใช้ระบบ Fallback อัปโหลดลุย 3 เซิร์ฟเวอร์
+                    direct_link = upload_file_with_fallback(uploaded_file.name, uploaded_file.getvalue(), "application/pdf")
+                    
+                    if direct_link:
+                        filename_clean = uploaded_file.name[:-4] if uploaded_file.name.lower().endswith('.pdf') else uploaded_file.name
+                        qr_bytes, name = generate_qr_with_text(direct_link, filename_clean)
                         
-                        if response.status_code == 200:
-                            direct_link = response.text.strip() # ดึง URL ตรงๆ ที่ระบบส่งกลับมา
-                            
-                            filename_clean = uploaded_file.name[:-4] if uploaded_file.name.lower().endswith('.pdf') else uploaded_file.name
-                            
-                            qr_bytes, name = generate_qr_with_text(direct_link, filename_clean)
-                            st.success("🎉 สร้างสำเร็จ!")
-                            st.image(qr_bytes, width=300)
-                            st.markdown(f"🔗 **ลิงก์ตรงไฟล์:** [{direct_link}]({direct_link})")
-                            st.download_button("📥 ดาวน์โหลดภาพ QR Code (PNG)", data=qr_bytes, file_name=f"{name}_qr.png", mime="image/png")
-                        else:
-                            st.error(f"เซิร์ฟเวอร์ปฏิเสธการเก็บไฟล์ (Status Code: {response.status_code})")
-                    except Exception as e: st.error(f"เกิดข้อผิดพลาดในการเชื่อมต่อ: {e}")
+                        st.success("🎉 สร้างสำเร็จ!")
+                        st.image(qr_bytes, width=300)
+                        st.markdown(f"🔗 **ลิงก์ตรงไฟล์:** [{direct_link}]({direct_link})")
+                        st.download_button("📥 ดาวน์โหลดภาพ QR Code (PNG)", data=qr_bytes, file_name=f"{name}_qr.png", mime="image/png")
+                    else:
+                        st.error("❌ เซิร์ฟเวอร์ฝากไฟล์สาธารณะทั้งหมดปฏิเสธการเชื่อมต่อในขณะนี้")
+                        st.info("💡 แนะนำให้ใช้ช่องคู่ขนาน 'ใช้ลิงก์ PDF ที่มีอยู่แล้ว' โดยนำไฟล์ไปใส่ใน Google Drive หรือ OneDrive ของบริษัทแทน จะเสถียรและปลอดภัยที่สุดครับ")
             else: st.error("กรุณาเลือกไฟล์ก่อนครับ")
             
     with tab2:
@@ -167,21 +197,19 @@ elif menu == "🌐 ลิงก์เว็บ & รูปภาพ":
         uploaded_img = st.file_uploader("เลือกไฟล์รูปภาพของคุณ", type=["png", "jpg", "jpeg"])
         if st.button("อัปโหลดและสร้าง QR Code รูปภาพ", key="btn_img_upload"):
             if uploaded_img is not None:
-                with st.spinner("กำลังอัปโหลดรูปภาพไปยังระบบใหม่..."):
-                    try:
-                        url = f"https://transfer.sh/{uploaded_img.name}"
-                        response = requests.put(url, data=uploaded_img.getvalue())
+                with st.spinner("กำลังอัปโหลดรูปภาพไปยังระบบเครือข่ายสำรอง..."):
+                    
+                    direct_img_link = upload_file_with_fallback(uploaded_img.name, uploaded_img.getvalue(), uploaded_img.type)
+                    
+                    if direct_img_link:
+                        img_name_clean = uploaded_img.name.rsplit('.', 1)[0]
+                        qr_bytes, name = generate_qr_with_text(direct_img_link, img_name_clean)
                         
-                        if response.status_code == 200:
-                            direct_img_link = response.text.strip()
-                            img_name_clean = uploaded_img.name.rsplit('.', 1)[0]
-                            
-                            qr_bytes, name = generate_qr_with_text(direct_img_link, img_name_clean)
-                            st.success("📤 อัปโหลดรูปภาพสำเร็จ!")
-                            st.image(qr_bytes, width=300)
-                            st.download_button("📥 ดาวน์โหลดภาพ QR Code (PNG)", data=qr_bytes, file_name=f"{name}_qr.png", mime="image/png")
-                        else: st.error("เกิดข้อผิดพลาดในการฝากไฟล์รูปภาพ")
-                    except Exception as e: st.error(f"เกิดข้อผิดพลาด: {e}")
+                        st.success("📤 อัปโหลดรูปภาพสำเร็จ!")
+                        st.image(qr_bytes, width=300)
+                        st.download_button("📥 ดาวน์โหลดภาพ QR Code (PNG)", data=qr_bytes, file_name=f"{name}_qr.png", mime="image/png")
+                    else:
+                        st.error("❌ เซิร์ฟเวอร์ฝากรูปภาพสาธารณะทั้งหมดปฏิเสธการเชื่อมต่อในขณะนี้")
             else: st.error("กรุณาเลือกไฟล์รูปภาพก่อนครับ")
 
 
